@@ -1,0 +1,1 @@
+api_key = "YOUR_OCTOPRINT_API_KEY"
