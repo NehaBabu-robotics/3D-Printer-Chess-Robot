@@ -1,1 +1,1 @@
-api_key = "YOUR_OCTOPRINT_API_KEY"
+api_key = "WPFLH1TZCTXOVWloNMhD1dCM1GeTuwgvUtJcy4yMorg"
