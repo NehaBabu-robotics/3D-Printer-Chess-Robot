@@ -2,6 +2,8 @@ from matplotlib.pyplot import gray
 import numpy as np
 import cv2
 import math
+import json
+import os
 
 
 class MoveDetector:
@@ -15,15 +17,28 @@ class MoveDetector:
         cap = cv2.VideoCapture(self.path)
 
         # Resize so width becomes ~320px
-        self.resize = 320 / cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        # self.resize = 320 / cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.resize = 1.0 # Keep original resolution for better noise detection
         self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) * self.resize)
         self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) * self.resize)
 
         # Board column labels
         self.abc = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 
-        self.fieldPositions = self.detectSquares()
+        # self.fieldPositions = self.detectSquares()
+        self.fieldPositions = self.load_manual_grid()
         self.avgNoise = self.estimateNoise()
+
+
+    def load_manual_grid(self):
+        if os.path.exists('grid_config.json'):
+            with open('grid_config.json', 'r') as f:
+                print("LOCKED: Using manual grid calibration.")
+                return json.load(f)
+        else:
+            print("WARNING: No manual grid found. Defaulting to auto-detect.")
+            return self.detectSquares()
+        
 
     def detectSquares(self):
         """
@@ -42,22 +57,32 @@ class MoveDetector:
 
         # We ignore the leftmost 20% and rightmost 10% of the image 
         # to avoid the printer screen and table clutter.
-        margin_left = int(self.width * 0.25)
-        margin_right = int(self.width * 0.90)
+        margin_left = int(self.width * 0.3)
+        margin_right = int(self.width * 0.7)
 
         # Ignore the bottom 15% of the frame (where the structure is)
-        bottom_limit = int(self.height * 0.85)
+        bottom_limit = int(self.height * 0.74)
+        upper_limit = int(self.height * 0.03)
 
-        gray_cropped = gray[0:bottom_limit, margin_left:margin_right]
+        gray_cropped = gray[upper_limit:bottom_limit, margin_left:margin_right]
         # tresh_cropped = thresh[:, margin_left:margin_right]
+
+        # --- CALIBRATION BLOCK ---
+        # Show the cropped image to the user
+        cv2.imshow("CALIBRATION: Is the board centered?", gray_cropped)
+        print("Check the 'CALIBRATION' window. Is the board fully visible without the printer frame?")
+        print("Press any key to continue or Ctrl+C to stop and adjust margins.")
+        cv2.waitKey(0) 
+        cv2.destroyWindow("CALIBRATION: Is the board centered?")
+        # --- END CALIBRATION BLOCK ---
 
         edges = cv2.Canny(gray_cropped, 150, 200)
         # edges = cv2.Canny(gray_cropped, 150, 200)
 
         # Detect board grid lines
-        v_lines_part1 = cv2.HoughLines(edges, 1, np.pi / 180, 70, None, 0, 0, 0, 0.05*np.pi)
-        v_lines_part2 = cv2.HoughLines(edges, 1, np.pi / 180, 70, None, 0, 0, 0.95*np.pi, np.pi)
-        h_lines_raw = cv2.HoughLines(edges, 1, np.pi / 180, 70, None, 0, 0, 0.45*np.pi, 0.55*np.pi)
+        v_lines_part1 = cv2.HoughLines(edges, 1, np.pi / 180, 30, None, 0, 0, 0, 0.05*np.pi)
+        v_lines_part2 = cv2.HoughLines(edges, 1, np.pi / 180, 30, None, 0, 0, 0.95*np.pi, np.pi)
+        h_lines_raw = cv2.HoughLines(edges, 1, np.pi / 180, 30, None, 0, 0, 0.45*np.pi, 0.55*np.pi)
 
         # Helper to safely clean and combine line arrays
         def clean_lines(lines_list):
@@ -209,6 +234,7 @@ class MoveDetector:
 
         stillCounter = 0
         hasMoved = False
+        result = "none"
 
         cap = cv2.VideoCapture(self.path)
 
@@ -270,11 +296,21 @@ class MoveDetector:
 
                 # 2. Calculate change from baseline
                 change = {}
-                for key in crntPosition:
-                    diff = cv2.absdiff(crntPosition[key], lastPosition[key])
-                    # Low threshold to ensure we catch light-colored pieces
+                for key in self.fieldPositions:
+                    box_baseline = lastPosition[key]
+                    box_current = crntPosition[key]
+
+                    # SAFETY CHECK: If a box is empty, skip it to prevent AxisError
+                    if box_baseline.size == 0 or box_current.size == 0:
+                        print(f"WARNING: Square {key} is out of camera bounds!")
+                        change[key] = 0
+                        continue
+
+                    diff = cv2.absdiff(box_current, box_baseline)
+                    
+                    # Calculate variance of the mean
                     val = np.var(np.mean(diff, (0, 1)))
-                    change[key] = val if val > 1.0 else 0 
+                    change[key] = val if val > 1.0 else 0
 
                 candidates = sorted(change.keys(), key=lambda x: change[x], reverse=True)
 
@@ -316,13 +352,18 @@ class MoveDetector:
         
         return result, frame
 
-    def getBox(self, image, position, size=5):
+    def getBox(self, image, position, size=20):
         """
-        Extract a small image patch around a board square.
+        Extract a small image patch around a board square with boundary safety.
         """
-
-        (x,y) = position
-        return image[y-size:y+size, x-size:x+size]
+        (x, y) = position
+        
+        # Ensure coordinates stay within the frame size [0 to height/width]
+        y1, y2 = max(0, y - size), min(image.shape[0], y + size)
+        x1, x2 = max(0, x - size), min(image.shape[1], x + size)
+        
+        patch = image[y1:y2, x1:x2]
+        return patch
 
     def getCoords(self, lines, offset_x=0):
         """
