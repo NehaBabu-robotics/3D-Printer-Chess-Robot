@@ -9,9 +9,9 @@ class Octoprint:
                  api_key='',
                  a1=(26,38),
                  field_size=27,
-                 min_z=18,
+                 min_z=8,
                  z_up=40,
-                 z_park=80):
+                 z_park=40):
 
         self.base_url = host
         self.api_key = api_key
@@ -85,32 +85,39 @@ class Octoprint:
 
     def park(self):
         print(f"Parking at X220 Y220 Z{self.z_park}...")
-        # Switched from 'jog' to 'commands' for better reliability with wait_while_busy
-        command_p = {"commands": [
-            f"G1 Z{self.z_park} F3000",
-            "G1 X220 Y220 F3000",
+
+        self.send_command([
+            f"G1 Z{self.z_park} F5000",
+            "G1 X0 Y220 F12000",
             "M400"
-        ]}
-        requests.post(self.command, headers=self.headers, json=command_p)
+        ])
+
 
 
     def move_square(self, x, y):
 
         px = self.a1[0] + (x-1)*self.field_size
+        px += 3
         py = self.a1[1] + (y-1)*self.field_size
+        py -= 10
 
-        command = {'command':'jog','x':px,'y':py,'absolute':True}
-        requests.post(self.printhead, headers=self.headers, json=command)
+        # command = {'command':'jog','x':px,'y':py,'absolute':True}
+        # requests.post(self.printhead, headers=self.headers, json=command)
+        self.send_command(f"G1 X{px} Y{py} F12000")
 
 
     def move_down(self):
-        # F900 is 15mm/s. Adjust higher if your printer allows.
-        command = {"commands": [f"G1 Z{self.min_z} F900"]}
-        requests.post(self.command, headers=self.headers, json=command)
+        # F1200 is 20mm/s. Adjust higher if your printer allows.
+        # command = {"commands": [f"G1 Z{self.min_z} F3000"]}
+        # requests.post(self.command, headers=self.headers, json=command)
+
+        self.send_command(f"G1 Z{self.min_z} F5000")
 
     def move_up(self):
-        command = {"commands": [f"G1 Z{self.z_up} F900"]}
-        requests.post(self.command, headers=self.headers, json=command)
+        # command = {"commands": [f"G1 Z{self.z_up} F3000"]}
+        # requests.post(self.command, headers=self.headers, json=command)
+
+        self.send_command(f"G1 Z{self.z_up} F5000")
 
 
     # def magnet_on(self):
@@ -140,10 +147,11 @@ class Octoprint:
         self.move_square(x,y)
         time.sleep(1)
 
-        self.magnet_on()
-
         self.move_down()
-        time.sleep(5)
+        time.sleep(2)
+
+        self.magnet_on()
+        time.sleep(1)
 
         self.move_up()
 
@@ -157,7 +165,7 @@ class Octoprint:
         time.sleep(1)
 
         self.magnet_off()
-        time.sleep(4)
+        time.sleep(1)
 
         self.move_up()
 
@@ -213,9 +221,7 @@ class Octoprint:
 
         time.sleep(1)
 
-        self.move_down()
         self.magnet_off()
-        self.move_up()
 
 
     def send_command(self, gcode):

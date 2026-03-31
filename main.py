@@ -32,10 +32,10 @@ def main():
 
     # M203 sets the Maximum Feedrate (Units are mm/s, NOT mm/min!)
     # 200 mm/s is roughly F12000
-    o.send_command("M203 X200 Y200 Z30") 
+    o.send_command("M203 X500 Y500 Z30") 
 
     # M201 sets Maximum Acceleration
-    o.send_command("M201 X2000 Y2000 Z150")
+    o.send_command("M201 X2500 Y2500 Z250")
 
     print("Welcome to 3D Printer Chess")
 
@@ -44,7 +44,7 @@ def main():
     if s.lower() == 'y':
         o.home()
         o.park()
-        time.sleep(70)
+        time.sleep(35)
         # o.wait_while_busy()
 
     print("Printer parked. Starting vision...")
@@ -166,7 +166,7 @@ def main():
                 
                 print(f"Removing piece at {xt}, {yt}")
                 o.remove(xt, yt)
-                time.sleep(20) 
+                time.sleep(6) 
 
             # 3. Proceed with Move
             hist.append(hist[-1].move(best_move))
@@ -177,7 +177,7 @@ def main():
 
             # Wait for the physical move to complete
             print("Waiting for printer to finish...")
-            time.sleep(30) # Give the printer plenty of time to finish and the head to park
+            time.sleep(10) # Give the printer plenty of time to finish and the head to park
 
             # CAPTURE FRESH BASELINE (The single source of truth)
             cap = cv2.VideoCapture(md.path)
